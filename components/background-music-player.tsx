@@ -1,11 +1,12 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Music, Volume2, VolumeX } from "lucide-react";
+import { Volume2, VolumeX } from "lucide-react";
 import { motion } from "framer-motion";
 
 export function BackgroundMusicPlayer() {
   const playerRef = useRef<any>(null);
+  const hasUnmutedRef = useRef(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const [playerReady, setPlayerReady] = useState(false);
 
@@ -57,6 +58,7 @@ export function BackgroundMusicPlayer() {
       },
       playerVars: {
         autoplay: 1,
+        mute: 1, // Muted autoplay is allowed by browsers; we unmute on first user interaction
         controls: 0,
         modestbranding: 1,
         rel: 0,
@@ -67,9 +69,34 @@ export function BackgroundMusicPlayer() {
 
   const onPlayerReady = (event: any) => {
     setPlayerReady(true);
-    event.target.playVideo();
+    event.target.playVideo(); // Autoplay works when muted (browser policy)
     setIsPlaying(true);
   };
+
+  // Unmute on first user interaction (required by browser autoplay policy)
+  useEffect(() => {
+    if (!playerReady) return;
+
+    const unmuteOnInteraction = () => {
+      if (hasUnmutedRef.current) return;
+      if (playerRef.current && typeof playerRef.current.unMute === "function") {
+        try {
+          playerRef.current.unMute();
+          hasUnmutedRef.current = true;
+        } catch (e) {
+          console.log("[BackgroundMusic] Unmute failed:", e);
+        }
+      }
+    };
+
+    const events = ["click", "touchstart", "keydown", "scroll"] as const;
+    const opts = { once: true, passive: true } as const;
+    events.forEach((evt) => document.addEventListener(evt, unmuteOnInteraction, opts));
+
+    return () => {
+      events.forEach((evt) => document.removeEventListener(evt, unmuteOnInteraction));
+    };
+  }, [playerReady]);
 
   const onPlayerStateChange = (event: any) => {
     const YT = (window as any).YT;
@@ -88,6 +115,11 @@ export function BackgroundMusicPlayer() {
     if (!playerReady || !playerRef.current) return;
 
     try {
+      // Unmute on first interaction (browser autoplay policy)
+      if (!hasUnmutedRef.current) {
+        playerRef.current.unMute();
+        hasUnmutedRef.current = true;
+      }
       if (isPlaying) {
         playerRef.current.pauseVideo();
         setIsPlaying(false);
